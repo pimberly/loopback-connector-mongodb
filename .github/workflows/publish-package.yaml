@@ -1,0 +1,64 @@
+name: Publish Package
+run-name: Publish npm package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+  packages: write
+
+jobs:
+  publish_npm_package:
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ github.token }}
+    steps:
+      # Checksout repository under $GITHUB_WORKSPACE so it can find package.json
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          scope: "@pimberly"
+          registry-url: "https://npm.pkg.github.com"
+          always-auth: true
+
+      - name: Restore cached node_modules and lock file
+        uses: actions/cache@v5
+        id: node-cache
+        with:
+          path: |
+            node_modules
+            package-lock.json
+          key: ${{ runner.os }}-${{ hashFiles('**/.nvmrc') }}-${{ hashFiles('**/package-lock.json') }}
+
+      # Install dependencies safely
+      - name: Install Dependencies
+        if: steps.node-cache.outputs.cache-hit != 'true'
+        run: |
+          if [ ! -f package-lock.json ]; then
+            npm install --package-lock-only
+          fi
+          npm ci
+
+      - name: Publish npm package
+        id: publish-npm-package
+        run: npx publish-npm-package
+        env:
+          GITHUB_TOKEN: ${{ secrets.PIMBERLY_ROBOT_TOKEN }}
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        if: github.ref == 'refs/heads/master'
+        with:
+          github_token: ${{ secrets.PIMBERLY_ROBOT_TOKEN }}
+          branch: master
+          tags: true
